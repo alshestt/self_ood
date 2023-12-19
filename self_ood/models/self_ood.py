@@ -25,7 +25,7 @@ class SelfOOD(pl.LightningModule):
             prototype_dim: int = 128,
             num_prototypes: int = 2048,
             temp: float = 0.1,
-            sharpen_temp: float = 0.25,
+            sharpen_temp: float = 4,
             num_sinkhorn_iters: int = 3,
             sinkhorn_queue_size: int = 3072,
             memax_weight: float = 1.0,
@@ -83,7 +83,7 @@ class SelfOOD(pl.LightningModule):
     def to_logits(self, images):
         embeds = F.normalize(self.mlp(self.encoder(images)), dim=-1)  # (n, pd)
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
-        return torch.matmul(embeds, prototypes.T) / self.temp  # (n, np)
+        return torch.matmul(embeds, prototypes.T) * self.temp  # (n, np)
 
     def to_temp(self):
         temps = self.mlp_t(self.temp)
@@ -96,8 +96,8 @@ class SelfOOD(pl.LightningModule):
         logits_2 = self.to_logits(views_2)
         new_temp = self.to_temp()
 
-        targets_1 = torch.softmax(logits_1.detach() / new_temp.detach()*self.sharpen_temp, dim=-1)
-        targets_2 = torch.softmax(logits_2.detach() / new_temp.detach()*self.sharpen_temp, dim=-1)
+        targets_1 = torch.softmax(logits_1.detach() * new_temp.detach()*self.sharpen_temp, dim=-1)
+        targets_2 = torch.softmax(logits_2.detach() * new_temp.detach()*self.sharpen_temp, dim=-1)
 
         if self.num_sinkhorn_iters > 0:
             batch_size = len(targets_1)
@@ -137,7 +137,7 @@ class SelfOOD(pl.LightningModule):
 
         # dispersion regularization
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
-        logits = prototypes @ prototypes.T / self.temp
+        logits = prototypes @ prototypes.T * self.temp
         logits.fill_diagonal_(float('-inf'))
         dispersion_reg = torch.logsumexp(logits, dim=1).mean()
         self.log(f'train/dispersion_reg', dispersion_reg, on_epoch=True, sync_dist=True)
