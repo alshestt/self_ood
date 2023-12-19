@@ -83,7 +83,8 @@ class SelfOOD(pl.LightningModule):
     def to_logits(self, images):
         embeds = F.normalize(self.mlp(self.encoder(images)), dim=-1)  # (n, pd)
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
-        return torch.matmul(embeds, prototypes.T) * self.temp  # (n, np)
+        new_temp = self.mlp_t(self.encoder(images))
+        return torch.matmul(embeds, prototypes.T) * new_temp  # (n, np)
 
     def to_temp(self):
         temps = self.mlp_t(self.temp)
@@ -94,10 +95,9 @@ class SelfOOD(pl.LightningModule):
 
         logits_1 = self.to_logits(views_1)
         logits_2 = self.to_logits(views_2)
-        new_temp = self.to_temp()
 
-        targets_1 = torch.softmax(logits_1.detach() * new_temp.detach()*self.sharpen_temp, dim=-1)
-        targets_2 = torch.softmax(logits_2.detach() * new_temp.detach()*self.sharpen_temp, dim=-1)
+        targets_1 = torch.softmax(logits_1.detach() *self.sharpen_temp, dim=-1)
+        targets_2 = torch.softmax(logits_2.detach() *self.sharpen_temp, dim=-1)
 
         if self.num_sinkhorn_iters > 0:
             batch_size = len(targets_1)
