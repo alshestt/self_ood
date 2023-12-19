@@ -91,7 +91,7 @@ class SelfOOD(pl.LightningModule):
     def to_logits(self, images):
         embeds = F.normalize(self.mlp(self.encoder(images)), dim=-1)  # (n, pd)
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
-        new_temp = torch.exp(self.mlp_t(self.encoder_t(images)))
+        new_temp = torch.exp(self.mlp_t(self.encoder_t(images))).reshape(-1)
         return torch.matmul(embeds, prototypes.T) * new_temp, new_temp  # (n, np)
 
     def training_step(self, batch, batch_idx):
