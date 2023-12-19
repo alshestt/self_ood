@@ -92,10 +92,6 @@ class SelfOOD(pl.LightningModule):
         new_temp = self.mlp_t(self.encoder_t(images))
         return torch.matmul(embeds, prototypes.T) * new_temp  # (n, np)
 
-    def to_temp(self):
-        temps = self.mlp_t(self.temp)
-        return temps
-
     def training_step(self, batch, batch_idx):
         (_, views_1, views_2), _ = batch
 
