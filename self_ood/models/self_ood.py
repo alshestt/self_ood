@@ -44,7 +44,7 @@ class SelfOOD(pl.LightningModule):
         )
         self.mlp = MLP(self.embed_dim, self.embed_dim, prototype_dim,
                        num_hidden_layers=2, dropout_rate=dropout_rate)
-        self.mlp_t = MLP(1, 4, 1, num_hidden_layers=2, dropout_rate = dropout_rate)
+        self.mlp_t = MLP(self.embed_dim, self.embed_dim, 1, num_hidden_layers=2, dropout_rate = dropout_rate)
         self.prototypes = nn.Parameter(torch.zeros(num_prototypes, prototype_dim))
         nn.init.uniform_(self.prototypes, -(1. / prototype_dim) ** 0.5, (1. / prototype_dim) ** 0.5)
 
