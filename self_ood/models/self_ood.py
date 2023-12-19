@@ -44,6 +44,7 @@ class SelfOOD(pl.LightningModule):
         )
         self.mlp = MLP(self.embed_dim, self.embed_dim, prototype_dim,
                        num_hidden_layers=2, dropout_rate=dropout_rate)
+        self.mlp_t = MLP(1, 128, 1, num_hidden_layers=2, dropout_rate = dropout_rate)
         self.prototypes = nn.Parameter(torch.zeros(num_prototypes, prototype_dim))
         nn.init.uniform_(self.prototypes, -(1. / prototype_dim) ** 0.5, (1. / prototype_dim) ** 0.5)
 
@@ -82,7 +83,8 @@ class SelfOOD(pl.LightningModule):
     def to_logits(self, images):
         embeds = F.normalize(self.mlp(self.encoder(images)), dim=-1)  # (n, pd)
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
-        return torch.matmul(embeds, prototypes.T) / self.temp  # (n, np)
+        temp = self.mlp_t(self.temp)
+        return torch.matmul(embeds, prototypes.T) / temp  # (n, np)
 
     def training_step(self, batch, batch_idx):
         (_, views_1, views_2), _ = batch
