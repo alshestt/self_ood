@@ -33,6 +33,7 @@ class SelfOOD(pl.LightningModule):
             lr: float = 1e-2,
             weight_decay: float = 1e-6,
             warmup_epochs: int = 100,
+            temperature_weight: float = 0,
     ) -> None:
         super().__init__()
 
@@ -64,6 +65,7 @@ class SelfOOD(pl.LightningModule):
         self.lr = lr
         self.weight_decay = weight_decay
         self.warmup_epochs = warmup_epochs
+        self.temperature_weight = temperature_weight
 
         self.ood_scores = [
             'msp', 'maxlogit', 'energy', 'entropy', 'truncated_entropy',
@@ -89,14 +91,14 @@ class SelfOOD(pl.LightningModule):
     def to_logits(self, images):
         embeds = F.normalize(self.mlp(self.encoder(images)), dim=-1)  # (n, pd)
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
-        new_temp = self.mlp_t(self.encoder_t(images))
+        new_temp = torch.exp(self.mlp_t(self.encoder_t(images)))
         return torch.matmul(embeds, prototypes.T) * new_temp, new_temp  # (n, np)
 
     def training_step(self, batch, batch_idx):
         (_, views_1, views_2), _ = batch
 
-        logits_1, _ = self.to_logits(views_1)
-        logits_2, _ = self.to_logits(views_2)
+        logits_1, temps_1 = self.to_logits(views_1)
+        logits_2, temps_2 = self.to_logits(views_2)
 
         targets_1 = torch.softmax(logits_1.detach() *self.sharpen_temp, dim=-1)
         targets_2 = torch.softmax(logits_2.detach() *self.sharpen_temp, dim=-1)
@@ -144,7 +146,9 @@ class SelfOOD(pl.LightningModule):
         dispersion_reg = torch.logsumexp(logits, dim=1).mean()
         self.log(f'train/dispersion_reg', dispersion_reg, on_epoch=True, sync_dist=True)
 
-        loss = bootstrap_loss + self.memax_weight * memax_reg + self.dispersion_weight * dispersion_reg
+        temp_reg = (temps_1.detach() + temps_2.detach()) / 2
+
+        loss = bootstrap_loss + self.memax_weight * memax_reg + self.dispersion_weight * dispersion_reg + self.temperature_weight * torch.norm(temp_reg, 2)
         self.log(f'train/loss', loss, on_epoch=True, sync_dist=True)
 
         return loss
