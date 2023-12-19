@@ -44,7 +44,7 @@ class SelfOOD(pl.LightningModule):
         )
         self.mlp = MLP(self.embed_dim, self.embed_dim, prototype_dim,
                        num_hidden_layers=2, dropout_rate=dropout_rate)
-        self.mlp_t = MLP(1, 128, 1, num_hidden_layers=2, dropout_rate = dropout_rate)
+        self.mlp_t = MLP(1, 4, 1, num_hidden_layers=2, dropout_rate = dropout_rate)
         self.prototypes = nn.Parameter(torch.zeros(num_prototypes, prototype_dim))
         nn.init.uniform_(self.prototypes, -(1. / prototype_dim) ** 0.5, (1. / prototype_dim) ** 0.5)
 
@@ -83,17 +83,21 @@ class SelfOOD(pl.LightningModule):
     def to_logits(self, images):
         embeds = F.normalize(self.mlp(self.encoder(images)), dim=-1)  # (n, pd)
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
-        temp = self.mlp_t(self.temp)
-        return torch.matmul(embeds, prototypes.T) / temp  # (n, np)
+        return torch.matmul(embeds, prototypes.T) / self.temp  # (n, np)
+
+    def to_temp(self):
+        temps = self.mlp_t(self.temp)
+        return temps
 
     def training_step(self, batch, batch_idx):
         (_, views_1, views_2), _ = batch
 
         logits_1 = self.to_logits(views_1)
         logits_2 = self.to_logits(views_2)
+        new_temp = self.to_temp()
 
-        targets_1 = torch.softmax(logits_1.detach() / self.sharpen_temp, dim=-1)
-        targets_2 = torch.softmax(logits_2.detach() / self.sharpen_temp, dim=-1)
+        targets_1 = torch.softmax(logits_1.detach() / new_temp.detach()*self.sharpen_temp, dim=-1)
+        targets_2 = torch.softmax(logits_2.detach() / new_temp.detach()*self.sharpen_temp, dim=-1)
 
         if self.num_sinkhorn_iters > 0:
             batch_size = len(targets_1)
