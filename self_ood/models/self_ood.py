@@ -42,9 +42,15 @@ class SelfOOD(pl.LightningModule):
             drop_block_rate=drop_block_rate,
             drop_path_rate=drop_path_rate
         )
+        self.encoder_t, self.embed_dim_t = encoder(
+            architecture=encoder_architecture,
+            drop_channel_rate=drop_channel_rate,
+            drop_block_rate=drop_block_rate,
+            drop_path_rate=drop_path_rate
+        )
         self.mlp = MLP(self.embed_dim, self.embed_dim, prototype_dim,
                        num_hidden_layers=2, dropout_rate=dropout_rate)
-        self.mlp_t = MLP(self.embed_dim, self.embed_dim, 1, num_hidden_layers=2, dropout_rate = dropout_rate)
+        self.mlp_t = MLP(self.embed_dim_t, self.embed_dim_t, 1, num_hidden_layers=2, dropout_rate = dropout_rate)
         self.prototypes = nn.Parameter(torch.zeros(num_prototypes, prototype_dim))
         nn.init.uniform_(self.prototypes, -(1. / prototype_dim) ** 0.5, (1. / prototype_dim) ** 0.5)
 
@@ -83,7 +89,7 @@ class SelfOOD(pl.LightningModule):
     def to_logits(self, images):
         embeds = F.normalize(self.mlp(self.encoder(images)), dim=-1)  # (n, pd)
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
-        new_temp = self.mlp_t(self.encoder(images))
+        new_temp = self.mlp_t(self.encoder_t(images))
         return torch.matmul(embeds, prototypes.T) * new_temp  # (n, np)
 
     def to_temp(self):
