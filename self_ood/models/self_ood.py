@@ -171,8 +171,7 @@ class SelfOOD(pl.LightningModule):
              ood_scores['mean_truncated_entropy'],
              ood_scores['expected_entropy'],
              ood_scores['bald_score']) = self.compute_ensemble_scores(ensemble_probas)
-            logits_v, _ = self.to_logits(v)
-            ensemble_probas = torch.stack([torch.softmax(logits_v, dim=-1) for v in views])
+            ensemble_probas = torch.stack([torch.softmax(self.to_logits(v)[0], dim=-1) for v in views])
             (ood_scores['mean_msp_on_views'],
              ood_scores['mean_entropy_on_views'],
              ood_scores['mean_truncated_entropy_on_views'],
