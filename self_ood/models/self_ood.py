@@ -69,7 +69,7 @@ class SelfOOD(pl.LightningModule):
             'msp', 'maxlogit', 'energy', 'entropy', 'truncated_entropy',
             'mean_msp', 'mean_entropy', 'mean_truncated_entropy', 'expected_entropy', 'bald_score',
             'mean_msp_on_views', 'mean_entropy_on_views', 'mean_truncated_entropy_on_views',
-            'expected_entropy_on_views', 'bald_score_on_views'
+            'expected_entropy_on_views', 'bald_score_on_views', 'neg_cappa'
         ]
         self.val_metrics = nn.ModuleDict()
         for k in self.ood_scores:
@@ -90,13 +90,13 @@ class SelfOOD(pl.LightningModule):
         embeds = F.normalize(self.mlp(self.encoder(images)), dim=-1)  # (n, pd)
         prototypes = F.normalize(self.prototypes, dim=-1)  # (np, pd)
         new_temp = self.mlp_t(self.encoder_t(images))
-        return torch.matmul(embeds, prototypes.T) * new_temp  # (n, np)
+        return torch.matmul(embeds, prototypes.T) * new_temp, new_temp  # (n, np)
 
     def training_step(self, batch, batch_idx):
         (_, views_1, views_2), _ = batch
 
-        logits_1 = self.to_logits(views_1)
-        logits_2 = self.to_logits(views_2)
+        logits_1, _ = self.to_logits(views_1)
+        logits_2, _ = self.to_logits(views_2)
 
         targets_1 = torch.softmax(logits_1.detach() *self.sharpen_temp, dim=-1)
         targets_2 = torch.softmax(logits_2.detach() *self.sharpen_temp, dim=-1)
@@ -155,23 +155,24 @@ class SelfOOD(pl.LightningModule):
 
         ood_scores = {}
         with eval_mode(self):
-            logits = self.to_logits(images)
+            logits, temp = self.to_logits(images)
             probas = torch.softmax(logits, dim=-1)
             ood_scores['msp'] = -probas.max(dim=-1).values
             ood_scores['maxlogit'] = -logits.max(dim=-1).values
             ood_scores['energy'] = -torch.logsumexp(logits, dim=-1)
             ood_scores['entropy'] = entropy(probas, dim=-1)
             ood_scores['truncated_entropy'] = entropy(probas, dim=-1, truncate=100)
+            ood_scores['neg_cappa'] = -temp
 
         with eval_mode(self, enable_dropout=True):
-            ensemble_probas = torch.stack([torch.softmax(self.to_logits(images), dim=-1) for _ in range(len(views))])
+            ensemble_probas = torch.stack([torch.softmax(logits, dim=-1) for _ in range(len(views))])
             (ood_scores['mean_msp'],
              ood_scores['mean_entropy'],
              ood_scores['mean_truncated_entropy'],
              ood_scores['expected_entropy'],
              ood_scores['bald_score']) = self.compute_ensemble_scores(ensemble_probas)
-
-            ensemble_probas = torch.stack([torch.softmax(self.to_logits(v), dim=-1) for v in views])
+            logits_v, _ = self.to_logits(v)
+            ensemble_probas = torch.stack([torch.softmax(logits_v, dim=-1) for v in views])
             (ood_scores['mean_msp_on_views'],
              ood_scores['mean_entropy_on_views'],
              ood_scores['mean_truncated_entropy_on_views'],
